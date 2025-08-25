@@ -1,9 +1,37 @@
+/*
+ * C# Solution Parser - Модуль для работы с файлами Visual Studio Solution (.sln)
+ * 
+ * Функциональность:
+ * • Загрузка и парсинг .sln файлов с извлечением информации о проектах
+ * • Переименование проектов в solution файле с обновлением путей
+ * • Комплексное переименование проектов с папками и файлами
+ * • Переименование самого solution файла
+ * • Создание резервных копий проектов
+ * • Получение списков файлов проектов
+ * 
+ * Структуры:
+ * • ProjectInfo - информация о проекте из .sln (GUID, имя, путь)
+ * • RenameProjectResult - результат операции переименования с детальной информацией
+ * 
+ * Основные функции:
+ * • LoadSolution() - загрузка .sln файла
+ * • GetProjects() - получение списка проектов
+ * • RenameProjectWithFiles() - полное переименование проекта
+ * • ChangeProjectName()/ChangeProjectPath() - изменение имени/пути проекта
+ * • RenameSolutionFile() - переименование .sln файла
+ * • SaveSolution() - сохранение изменений
+ */
+
+// Основные системные библиотеки
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+// Библиотека для работы с регулярными выражениями при парсинге .sln файлов
 using System.Text.RegularExpressions;
+
+// CODE --------------------------
 
 namespace CsSolutionRenamer
 {
@@ -44,6 +72,16 @@ namespace CsSolutionRenamer
             return outputPath;
         }
 
+        /// <summary>
+        /// Загружает .sln файл в память для дальнейшего парсинга и модификации
+        /// </summary>
+        /// <param name="filePath">Полный путь к .sln файлу</param>
+        /// <exception cref="ArgumentException">Если путь пустой или null</exception>
+        /// <exception cref="FileNotFoundException">Если файл не найден</exception>
+        /// <example>
+        /// parser.LoadSolution(@"C:\MySolution\MySolution.sln");
+        /// // Загружает файл решения в память для обработки
+        /// </example>
         public void LoadSolution(string filePath)
         {
             if (string.IsNullOrWhiteSpace(filePath))
@@ -59,6 +97,16 @@ namespace CsSolutionRenamer
             }
         }
 
+        /// <summary>
+        /// Изменяет путь к проекту в .sln файле
+        /// </summary>
+        /// <param name="oldPath">Текущий относительный путь к .csproj файлу</param>
+        /// <param name="newPath">Новый относительный путь к .csproj файлу</param>
+        /// <returns>true если путь был изменен, false если не найден</returns>
+        /// <example>
+        /// parser.ChangeProjectPath(@"OldProject\OldProject.csproj", @"NewProject\NewProject.csproj")
+        /// // возвращает: true если проект найден и путь обновлен
+        /// </example>
         public bool ChangeProjectPath(string oldPath, string newPath)
         {
             ValidateProjectParameters(oldPath, newPath);
@@ -91,6 +139,18 @@ namespace CsSolutionRenamer
             }
         }
 
+        /// <summary>
+        /// Изменяет имя проекта в .sln файле и автоматически обновляет соответствующие пути
+        /// </summary>
+        /// <param name="oldName">Текущее имя проекта</param>
+        /// <param name="newName">Новое имя проекта</param>
+        /// <returns>true если имя было изменено, false если проект не найден</returns>
+        /// <example>
+        /// parser.ChangeProjectName("MyOldProject", "MyNewProject")
+        /// // Изменяет: Project(...) = "MyOldProject", "MyOldProject\MyOldProject.csproj", ...
+        /// // На: Project(...) = "MyNewProject", "MyNewProject\MyNewProject.csproj", ...
+        /// // возвращает: true
+        /// </example>
         public bool ChangeProjectName(string oldName, string newName)
         {
             ValidateProjectParameters(oldName, newName);
@@ -138,6 +198,20 @@ namespace CsSolutionRenamer
                 : Path.Combine(newDirectory, newFileName).Replace('\\', '/');
         }
 
+        /// <summary>
+        /// Выполняет комплексное переименование проекта: namespace'ы, папка, .csproj файл и пути в .sln
+        /// </summary>
+        /// <param name="oldName">Текущее имя проекта</param>
+        /// <param name="newName">Новое имя проекта</param>
+        /// <param name="solutionDirectory">Путь к директории solution'а</param>
+        /// <returns>RenameProjectResult с детальной информацией о выполненных операциях</returns>
+        /// <example>
+        /// var result = parser.RenameProjectWithFiles("OldProject", "NewProject", @"C:\MySolution");
+        /// // result.Success = true
+        /// // result.DirectoryRenamed = true
+        /// // result.CsprojRenamed = true
+        /// // result.NamespaceChanges.NamespacesModified = 3
+        /// </example>
         public RenameProjectResult RenameProjectWithFiles(string oldName, string newName, string solutionDirectory)
         {
             ValidateProjectParameters(oldName, newName);
@@ -209,6 +283,16 @@ namespace CsSolutionRenamer
             return result;
         }
 
+        /// <summary>
+        /// Переименовывает файл .sln решения на диске и обновляет внутренний путь
+        /// </summary>
+        /// <param name="newSolutionName">Новое имя файла решения без расширения</param>
+        /// <exception cref="ArgumentException">Если новое имя пустое</exception>
+        /// <exception cref="InvalidOperationException">Если solution не загружен или файл уже существует</exception>
+        /// <example>
+        /// parser.RenameSolutionFile("NewSolutionName");
+        /// // Переименовывает MySolution.sln в NewSolutionName.sln
+        /// </example>
         public void RenameSolutionFile(string newSolutionName)
         {
             if (string.IsNullOrWhiteSpace(newSolutionName))
@@ -227,6 +311,18 @@ namespace CsSolutionRenamer
             _originalPath = newPath;
         }
 
+        /// <summary>
+        /// Сохраняет изменения в .sln файл
+        /// </summary>
+        /// <param name="outputPath">Путь для сохранения (по умолчанию - оригинальный файл)</param>
+        /// <exception cref="InvalidOperationException">Если solution не загружен или ошибка записи</exception>
+        /// <example>
+        /// parser.SaveSolution();
+        /// // Сохраняет в оригинальный файл
+        /// 
+        /// parser.SaveSolution(@"C:\Backup\MySolution.sln");
+        /// // Сохраняет в указанный файл
+        /// </example>
         public void SaveSolution(string outputPath = null)
         {
             lock (_lock)
@@ -252,6 +348,18 @@ namespace CsSolutionRenamer
             }
         }
 
+        /// <summary>
+        /// Извлекает список всех проектов из загруженного .sln файла
+        /// </summary>
+        /// <returns>List&lt;ProjectInfo&gt; с информацией о всех найденных проектах</returns>
+        /// <example>
+        /// var projects = parser.GetProjects();
+        /// // возвращает:
+        /// // [
+        /// //   { Name: "MyProject", Path: "MyProject\\MyProject.csproj", ProjectGuid: "{...}" },
+        /// //   { Name: "TestProject", Path: "Tests\\TestProject.csproj", ProjectGuid: "{...}" }
+        /// // ]
+        /// </example>
         public List<ProjectInfo> GetProjects() =>
             _lines?.Where(line => line.StartsWith("Project("))
                 .Select(line => ProjectLineRegex.Match(line))
@@ -432,25 +540,45 @@ namespace CsSolutionRenamer
         }
     }
 
+    /// <summary>
+    /// Содержит информацию о проекте, извлеченную из строки Project(...) в .sln файле
+    /// </summary>
     public class ProjectInfo
     {
+        /// <summary>GUID типа проекта (например, {FAE04EC0-301F-11D3-BF4B-00C04F79EFBC} для C#)</summary>
         public string ProjectTypeGuid { get; set; }
+        /// <summary>Имя проекта как оно отображается в Visual Studio</summary>
         public string Name { get; set; }
+        /// <summary>Относительный путь к .csproj файлу от директории solution'а</summary>
         public string Path { get; set; }
+        /// <summary>Уникальный GUID проекта</summary>
         public string ProjectGuid { get; set; }
     }
 
+    /// <summary>
+    /// Содержит детальную информацию о результатах операции полного переименования проекта
+    /// </summary>
     public class RenameProjectResult
     {
+        /// <summary>Общий успех операции</summary>
         public bool Success { get; set; }
+        /// <summary>Была ли переименована папка проекта</summary>
         public bool DirectoryRenamed { get; set; }
+        /// <summary>Был ли переименован .csproj файл</summary>
         public bool CsprojRenamed { get; set; }
+        /// <summary>Был ли обновлен .sln файл</summary>
         public bool SolutionUpdated { get; set; }
+        /// <summary>Путь к старой директории проекта</summary>
         public string OldDirectoryPath { get; set; }
+        /// <summary>Путь к новой директории проекта</summary>
         public string NewDirectoryPath { get; set; }
+        /// <summary>Путь к старому .csproj файлу</summary>
         public string OldCsprojPath { get; set; }
+        /// <summary>Путь к новому .csproj файлу</summary>
         public string NewCsprojPath { get; set; }
+        /// <summary>Сообщение об ошибке, если операция не удалась</summary>
         public string ErrorMessage { get; set; }
+        /// <summary>Детальная информация об изменениях namespace'ов и кода</summary>
         public RenameResult NamespaceChanges { get; set; }
     }
 }

@@ -1,10 +1,34 @@
+/*
+ * C# Project Renamer - Модуль для переименования содержимого проектов
+ * 
+ * Функциональность:
+ * • Переименование namespace'ов в C# файлах проекта
+ * • Поиск и переименование классов содержащих имя проекта
+ * • Обновление AssemblyName и RootNamespace в .csproj файлах
+ * • Исключение системных директорий из обработки
+ * • Детальная статистика изменений
+ * 
+ * Структуры:
+ * • RenameResult - результат операции с количеством измененных элементов
+ * 
+ * Основные функции:
+ * • RenameProjectClasses() - комплексное переименование namespace'ов и проектных файлов
+ * • RenameNamespaces() - переименование namespace'ов в C# файлах
+ * • UpdateProjectFile() - обновление .csproj файлов
+ */
+
+// Основные системные библиотеки
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+// Библиотека для работы с регулярными выражениями для поиска классов и namespace'ов
 using System.Text.RegularExpressions;
+// Библиотека для работы с XML при обработке .csproj файлов
 using System.Xml.Linq;
+
+// CODE --------------------------
 
 namespace CsSolutionRenamer
 {
@@ -25,6 +49,20 @@ namespace CsSolutionRenamer
         };
 
 
+        /// <summary>
+        /// Выполняет комплексное переименование содержимого проекта: namespace'ы, классы и .csproj файлы
+        /// </summary>
+        /// <param name="oldProjectName">Текущее имя проекта</param>
+        /// <param name="newProjectName">Новое имя проекта</param>
+        /// <param name="projectPath">Путь к директории проекта</param>
+        /// <returns>RenameResult с детальной статистикой изменений</returns>
+        /// <example>
+        /// var result = renamer.RenameProjectClasses("OldProject", "NewProject", @"C:\Solution\OldProject");
+        /// // result.TotalFilesProcessed = 15
+        /// // result.NamespacesModified = 3
+        /// // result.ProjectFilesModified = 1
+        /// // result.HasChanges = true
+        /// </example>
         public RenameResult RenameProjectClasses(string oldProjectName, string newProjectName, string projectPath)
         {
             ValidateInputParameters(oldProjectName, newProjectName, projectPath);
@@ -165,14 +203,23 @@ namespace CsSolutionRenamer
         }
     }
 
+    /// <summary>
+    /// Содержит детальную статистику результатов операции переименования содержимого проекта
+    /// </summary>
     public class RenameResult
     {
+        /// <summary>Общее количество обработанных C# файлов</summary>
         public int TotalFilesProcessed { get; set; }
+        /// <summary>Количество найденных классов, содержащих имя проекта</summary>
         public int ClassesFound { get; set; }
+        /// <summary>Количество модифицированных файлов</summary>
         public int FilesModified { get; set; }
+        /// <summary>Количество измененных пространств имен</summary>
         public int NamespacesModified { get; set; }
+        /// <summary>Количество обновленных .csproj файлов</summary>
         public int ProjectFilesModified { get; set; }
 
+        /// <summary>Показывает, были ли внесены какие-либо изменения</summary>
         public bool HasChanges => FilesModified > 0 || NamespacesModified > 0 || ProjectFilesModified > 0;
     }
 }

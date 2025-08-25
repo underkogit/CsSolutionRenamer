@@ -1,5 +1,29 @@
+/*
+ * C# Solution Renamer - Главный модуль приложения
+ * 
+ * Функциональность:
+ * • Интерактивное отображение проектов и их пространств имен
+ * • Выбор проектов для переименования с пользовательским интерфейсом
+ * • Два режима переименования: только в .sln или полное переименование
+ * • Переименование файлов решения
+ * • Детальная отчетность об изменениях
+ * 
+ * Структуры:
+ * • ProjectWithNamespace - связывает проект с найденными пространствами имен
+ * 
+ * Основные функции:
+ * • GetProjectNamespaces() - извлечение пространств имен из C# файлов
+ * • DisplayProjectsAndNamespaces() - отображение проектов с их namespace'ами
+ * • SelectProjectsForEditing() - интерактивный выбор проектов
+ * • ProcessSelectedProjects() - обработка выбранных проектов
+ */
+
+// Основные системные библиотеки для работы с файловой системой и коллекциями
 using CsSolutionRenamer;
+// Библиотека для работы с регулярными выражениями при поиске namespace'ов
 using System.Text.RegularExpressions;
+
+// CODE --------------------------
 
 Console.WriteLine("=== C# Solution Renamer ===");
 Console.WriteLine();
@@ -74,6 +98,16 @@ else
     Console.WriteLine("\nИзменения не внесены.");
 }
 
+/// <summary>
+/// Получает полный путь к директории проекта на основе пути к solution и относительного пути проекта
+/// </summary>
+/// <param name="solutionDirectory">Путь к директории solution файла</param>
+/// <param name="projectPath">Относительный путь к .csproj файлу</param>
+/// <returns>Полный путь к директории проекта</returns>
+/// <example>
+/// GetProjectDirectory(@"C:\Solution", @"MyProject\MyProject.csproj") 
+/// // возвращает: @"C:\Solution\MyProject"
+/// </example>
 static string GetProjectDirectory(string solutionDirectory, string projectPath)
 {
     var projectDir = Path.GetDirectoryName(projectPath);
@@ -82,6 +116,15 @@ static string GetProjectDirectory(string solutionDirectory, string projectPath)
         : Path.Combine(solutionDirectory, projectDir);
 }
 
+/// <summary>
+/// Извлекает все уникальные пространства имен из C# файлов в указанной директории проекта
+/// </summary>
+/// <param name="projectDirectory">Путь к директории проекта для сканирования</param>
+/// <returns>HashSet с уникальными пространствами имен, найденными в проекте</returns>
+/// <example>
+/// GetProjectNamespaces(@"C:\MyProject") 
+/// // возвращает: { "MyProject", "MyProject.Services", "MyProject.Models" }
+/// </example>
 static HashSet<string> GetProjectNamespaces(string projectDirectory)
 {
     var namespaces = new HashSet<string>();
@@ -111,6 +154,15 @@ static HashSet<string> GetProjectNamespaces(string projectDirectory)
     return namespaces;
 }
 
+/// <summary>
+/// Проверяет, следует ли исключить файл из обработки на основе его относительного пути
+/// </summary>
+/// <param name="relativePath">Относительный путь к файлу для проверки</param>
+/// <returns>true если файл нужно исключить, false если обрабатывать</returns>
+/// <example>
+/// ShouldExcludeFile(@"bin\Debug\MyApp.dll") // возвращает: true
+/// ShouldExcludeFile(@"Services\MyService.cs") // возвращает: false
+/// </example>
 static bool ShouldExcludeFile(string relativePath)
 {
     var excludedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -122,6 +174,19 @@ static bool ShouldExcludeFile(string relativePath)
         .Any(segment => excludedDirectories.Contains(segment));
 }
 
+/// <summary>
+/// Отображает пронумерованный список проектов с их путями и пространствами имен в консоли
+/// </summary>
+/// <param name="projects">Список проектов с извлеченными пространствами имен</param>
+/// <example>
+/// DisplayProjectsAndNamespaces(projectsList)
+/// // Выводит:
+/// // 1. Проект: MyProject
+/// //    Путь: MyProject\MyProject.csproj
+/// //    Пространства имен (2):
+/// //      - MyProject
+/// //      - MyProject.Services
+/// </example>
 static void DisplayProjectsAndNamespaces(List<ProjectWithNamespace> projects)
 {
     for (int i = 0; i < projects.Count; i++)
@@ -146,6 +211,19 @@ static void DisplayProjectsAndNamespaces(List<ProjectWithNamespace> projects)
     }
 }
 
+/// <summary>
+/// Позволяет пользователю интерактивно выбрать проекты для переименования из списка
+/// </summary>
+/// <param name="projects">Список всех доступных проектов</param>
+/// <returns>Список выбранных проектов для обработки</returns>
+/// <example>
+/// SelectProjectsForEditing(allProjects)
+/// // Пользователь вводит: "1,3,5"
+/// // возвращает: проекты с индексами 0, 2, 4 из исходного списка
+/// // 
+/// // Пользователь вводит: "all" 
+/// // возвращает: все проекты из списка
+/// </example>
 static List<ProjectWithNamespace> SelectProjectsForEditing(List<ProjectWithNamespace> projects)
 {
     Console.WriteLine("Выберите проекты для редактирования:");
@@ -173,6 +251,18 @@ static List<ProjectWithNamespace> SelectProjectsForEditing(List<ProjectWithNames
     return selectedIndices.Select(i => projects[i]).ToList();
 }
 
+/// <summary>
+/// Обрабатывает выбранные проекты, предлагая два режима переименования для каждого проекта
+/// </summary>
+/// <param name="selectedProjects">Список проектов для обработки</param>
+/// <param name="solutionParser">Экземпляр парсера решения для выполнения операций</param>
+/// <param name="solutionDirectory">Путь к директории решения</param>
+/// <example>
+/// ProcessSelectedProjects(selectedProjects, parser, @"C:\MySolution")
+/// // Для каждого проекта предлагает:
+/// // 1. Переименовать только в solution файле
+/// // 2. Переименовать проект полностью (папка, .csproj, пути в .sln)
+/// </example>
 static void ProcessSelectedProjects(List<ProjectWithNamespace> selectedProjects, SolutionParser solutionParser, string solutionDirectory)
 {
     foreach (var projectWithNamespace in selectedProjects)
@@ -255,4 +345,10 @@ static void ProcessSelectedProjects(List<ProjectWithNamespace> selectedProjects,
     solutionParser.SaveSolution();
 }
 
+/// <summary>
+/// Структура, связывающая информацию о проекте с найденными в нем пространствами имен и путем к директории
+/// </summary>
+/// <param name="ProjectInfo">Информация о проекте из .sln файла</param>
+/// <param name="Directory">Полный путь к директории проекта на диске</param>
+/// <param name="Namespaces">Коллекция уникальных пространств имен, найденных в C# файлах проекта</param>
 record ProjectWithNamespace(ProjectInfo ProjectInfo, string Directory, HashSet<string> Namespaces);
