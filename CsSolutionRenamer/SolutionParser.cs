@@ -36,31 +36,12 @@ namespace CsSolutionRenamer
 
         private string GetFinalSavePath(string outputPath)
         {
-            string directory;
-            string fileName;
             if (string.IsNullOrWhiteSpace(outputPath))
             {
-                directory = Path.GetDirectoryName(_originalPath) ??
-                            throw new InvalidOperationException("Invalid original path");
-                fileName = Path.GetFileName(_originalPath);
-                return Path.Combine(directory, $"rep_{fileName}");
+                return _originalPath;
             }
 
-            fileName = Path.GetFileName(outputPath);
-            directory = Path.GetDirectoryName(outputPath);
-
-            if (string.IsNullOrWhiteSpace(directory))
-            {
-                directory = Path.GetDirectoryName(_originalPath) ??
-                            throw new InvalidOperationException("Invalid original path");
-            }
-
-            if (!fileName.StartsWith("rep_"))
-            {
-                fileName = $"rep_{fileName}";
-            }
-
-            return Path.Combine(directory, fileName);
+            return outputPath;
         }
 
         public void LoadSolution(string filePath)
@@ -128,11 +109,13 @@ namespace CsSolutionRenamer
                         if (match.Success && match.Groups[2].Value.Equals(oldName, StringComparison.OrdinalIgnoreCase))
                         {
                             var projectTypeGuid = match.Groups[1].Value;
-                            var projectPath = match.Groups[3].Value;
+                            var oldProjectPath = match.Groups[3].Value;
                             var projectGuid = match.Groups[4].Value;
 
+                            var newProjectPath = UpdateProjectPath(oldProjectPath, oldName, newName);
+
                             _lines[i] =
-                                $"Project(\"{projectTypeGuid}\") = \"{newName}\", \"{projectPath}\", \"{projectGuid}\"";
+                                $"Project(\"{projectTypeGuid}\") = \"{newName}\", \"{newProjectPath}\", \"{projectGuid}\"";
                             changed = true;
                         }
                     }
@@ -140,6 +123,108 @@ namespace CsSolutionRenamer
 
                 return changed;
             }
+        }
+
+        private string UpdateProjectPath(string oldPath, string oldProjectName, string newProjectName)
+        {
+            var directory = Path.GetDirectoryName(oldPath);
+            var fileName = Path.GetFileName(oldPath);
+            
+            var newDirectory = directory?.Replace(oldProjectName, newProjectName) ?? newProjectName;
+            var newFileName = fileName?.Replace(oldProjectName, newProjectName) ?? $"{newProjectName}.csproj";
+            
+            return string.IsNullOrEmpty(newDirectory) 
+                ? newFileName 
+                : Path.Combine(newDirectory, newFileName).Replace('\\', '/');
+        }
+
+        public RenameProjectResult RenameProjectWithFiles(string oldName, string newName, string solutionDirectory)
+        {
+            ValidateProjectParameters(oldName, newName);
+            
+            var result = new RenameProjectResult();
+            var project = GetProjects().FirstOrDefault(p => p.Name.Equals(oldName, StringComparison.OrdinalIgnoreCase));
+            
+            if (project == null)
+            {
+                result.ErrorMessage = $"Project '{oldName}' not found in solution";
+                return result;
+            }
+
+            var oldProjectDirectory = Path.Combine(solutionDirectory, Path.GetDirectoryName(project.Path) ?? "");
+            var newProjectDirectory = Path.Combine(solutionDirectory, Path.GetDirectoryName(project.Path)?.Replace(oldName, newName) ?? newName);
+            
+            try
+            {
+                var renamer = new ProjectRenamer();
+                var codeResult = renamer.RenameProjectClasses(oldName, newName, oldProjectDirectory);
+                result.NamespaceChanges = codeResult;
+
+                if (Directory.Exists(oldProjectDirectory))
+                {
+                    if (Directory.Exists(newProjectDirectory))
+                    {
+                        result.ErrorMessage = $"Target directory already exists: {newProjectDirectory}";
+                        return result;
+                    }
+
+                    Directory.Move(oldProjectDirectory, newProjectDirectory);
+                    result.DirectoryRenamed = true;
+                    result.OldDirectoryPath = oldProjectDirectory;
+                    result.NewDirectoryPath = newProjectDirectory;
+                }
+
+                var oldCsprojPath = Path.Combine(newProjectDirectory, $"{oldName}.csproj");
+                var newCsprojPath = Path.Combine(newProjectDirectory, $"{newName}.csproj");
+                
+                if (File.Exists(oldCsprojPath))
+                {
+                    File.Move(oldCsprojPath, newCsprojPath);
+                    result.CsprojRenamed = true;
+                    result.OldCsprojPath = oldCsprojPath;
+                    result.NewCsprojPath = newCsprojPath;
+                }
+
+                ChangeProjectName(oldName, newName);
+                result.SolutionUpdated = true;
+                result.Success = true;
+            }
+            catch (Exception ex)
+            {
+                result.ErrorMessage = ex.Message;
+                
+                try
+                {
+                    if (result.DirectoryRenamed && Directory.Exists(newProjectDirectory))
+                    {
+                        Directory.Move(newProjectDirectory, oldProjectDirectory);
+                    }
+                }
+                catch
+                {
+                    // Ignore rollback errors
+                }
+            }
+
+            return result;
+        }
+
+        public void RenameSolutionFile(string newSolutionName)
+        {
+            if (string.IsNullOrWhiteSpace(newSolutionName))
+                throw new ArgumentException("New solution name cannot be null or empty", nameof(newSolutionName));
+
+            if (_originalPath == null)
+                throw new InvalidOperationException("No solution loaded");
+
+            var directory = Path.GetDirectoryName(_originalPath);
+            var newPath = Path.Combine(directory!, $"{newSolutionName}.sln");
+            
+            if (File.Exists(newPath))
+                throw new InvalidOperationException($"Solution file already exists: {newPath}");
+
+            File.Move(_originalPath, newPath);
+            _originalPath = newPath;
         }
 
         public void SaveSolution(string outputPath = null)
@@ -353,5 +438,19 @@ namespace CsSolutionRenamer
         public string Name { get; set; }
         public string Path { get; set; }
         public string ProjectGuid { get; set; }
+    }
+
+    public class RenameProjectResult
+    {
+        public bool Success { get; set; }
+        public bool DirectoryRenamed { get; set; }
+        public bool CsprojRenamed { get; set; }
+        public bool SolutionUpdated { get; set; }
+        public string OldDirectoryPath { get; set; }
+        public string NewDirectoryPath { get; set; }
+        public string OldCsprojPath { get; set; }
+        public string NewCsprojPath { get; set; }
+        public string ErrorMessage { get; set; }
+        public RenameResult NamespaceChanges { get; set; }
     }
 }
